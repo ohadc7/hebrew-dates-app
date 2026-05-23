@@ -225,6 +225,10 @@ export function updateEvent(calendarId, eventId, event) {
   return api('PUT', `/calendars/${encodeURIComponent(calendarId)}/events/${eventId}`, event);
 }
 
+export function patchEvent(calendarId, eventId, fields) {
+  return api('PATCH', `/calendars/${encodeURIComponent(calendarId)}/events/${eventId}`, fields);
+}
+
 export function deleteEvent(calendarId, eventId) {
   return api('DELETE', `/calendars/${encodeURIComponent(calendarId)}/events/${eventId}`);
 }

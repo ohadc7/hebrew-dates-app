@@ -888,13 +888,17 @@ async function syncToGoogle() {
           if (String(err.message).includes(' 409')) {
             const conflict = await gcal.findEventByICalUID(calendarId, gEvent.iCalUID);
             if (conflict) {
-              await gcal.updateEvent(calendarId, conflict.id, { ...gEvent, status: 'confirmed' });
+              await gcal.patchEvent(calendarId, conflict.id, { status: 'confirmed' });
+              await gcal.patchEvent(calendarId, conflict.id, gEvent);
               updated++;
             } else { throw err; }
           } else { throw err; }
         }
       } else if (ex.status === 'cancelled') {
-        await gcal.updateEvent(calendarId, ex.id, { ...gEvent, status: 'confirmed' });
+        // Cancelled events sometimes reject PUT ("Invalid start time").
+        // PATCH with status:confirmed first to restore, then PATCH the rest.
+        await gcal.patchEvent(calendarId, ex.id, { status: 'confirmed' });
+        await gcal.patchEvent(calendarId, ex.id, gEvent);
         updated++;
       } else if (gEventChanged(ex, gEvent)) {
         await gcal.updateEvent(calendarId, ex.id, gEvent);
