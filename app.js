@@ -821,8 +821,21 @@ async function syncToGoogle() {
       const ex = existingByUid.get(want.uid);
       const gEvent = toGoogleEvent(want);
       if (!ex) {
-        await gcal.createEvent(calendarId, gEvent);
-        created++;
+        try {
+          await gcal.createEvent(calendarId, gEvent);
+          created++;
+        } catch (err) {
+          if (String(err.message).includes(' 409')) {
+            const conflict = await gcal.findEventByICalUID(calendarId, gEvent.iCalUID);
+            if (conflict) {
+              await gcal.updateEvent(calendarId, conflict.id, { ...gEvent, status: 'confirmed' });
+              updated++;
+            } else { throw err; }
+          } else { throw err; }
+        }
+      } else if (ex.status === 'cancelled') {
+        await gcal.updateEvent(calendarId, ex.id, { ...gEvent, status: 'confirmed' });
+        updated++;
       } else if (gEventChanged(ex, gEvent)) {
         await gcal.updateEvent(calendarId, ex.id, gEvent);
         updated++;
@@ -832,7 +845,7 @@ async function syncToGoogle() {
     }
 
     for (const [uid, ex] of existingByUid) {
-      if (!desiredByUid.has(uid)) {
+      if (!desiredByUid.has(uid) && ex.status !== 'cancelled') {
         await gcal.deleteEvent(calendarId, ex.id);
         deleted++;
       }

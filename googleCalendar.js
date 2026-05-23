@@ -194,13 +194,13 @@ export async function listCalendars() {
   }
 }
 
-export async function listAllEvents(calendarId) {
+export async function listAllEvents(calendarId, { includeDeleted = true } = {}) {
   const all = [];
   let pageToken;
   do {
     const params = new URLSearchParams({
       maxResults: '2500',
-      showDeleted: 'false',
+      showDeleted: includeDeleted ? 'true' : 'false',
       singleEvents: 'true',
     });
     if (pageToken) params.set('pageToken', pageToken);
@@ -209,6 +209,12 @@ export async function listAllEvents(calendarId) {
     pageToken = data.nextPageToken;
   } while (pageToken);
   return all;
+}
+
+export async function findEventByICalUID(calendarId, iCalUID) {
+  const params = new URLSearchParams({ iCalUID, showDeleted: 'true' });
+  const data = await api('GET', `/calendars/${encodeURIComponent(calendarId)}/events?${params}`);
+  return data.items?.[0] || null;
 }
 
 export function createEvent(calendarId, event) {
