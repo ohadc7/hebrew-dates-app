@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title data-i18n="title">Hebrew Dates → Google Calendar</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+  <div id="welcome-modal" class="modal-backdrop" hidden>
+    <div class="modal">
+      <button id="modal-lang-toggle" class="modal-lang-toggle" type="button" data-i18n="langToggle">עברית</button>
+      <h2 data-i18n="welcomeTitle">Welcome to Hebrew Dates</h2>
+      <p data-i18n="welcomeDesc">Track Hebrew birthdays, anniversaries, yahrzeits, and bar/bat mitzvahs. Choose how to use the app:</p>
+      <div class="welcome-options">
+        <button class="welcome-btn" data-mode="google" type="button">
+          <span class="welcome-icon">🔗</span>
+          <span class="welcome-text">
+            <strong data-i18n="connectMode">Connect with Google</strong>
+            <span class="welcome-desc" data-i18n="connectModeDesc">Sync events to your Google Calendar. Access from any device.</span>
+          </span>
+        </button>
+        <button class="welcome-btn" data-mode="anonymous" type="button">
+          <span class="welcome-icon">👤</span>
+          <span class="welcome-text">
+            <strong data-i18n="anonymousMode">Continue without account</strong>
+            <span class="welcome-desc" data-i18n="anonymousModeDesc">Just download an ICS file. Events live only in this browser.</span>
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <main>
+    <header>
+      <div class="header-actions">
+        <button id="switch-mode-btn" class="lang-toggle mode-switch" type="button" data-i18n="changeMode">Change mode</button>
+        <button id="lang-toggle" class="lang-toggle" type="button" data-i18n="langToggle">עברית</button>
+      </div>
+      <h1 data-i18n="title">Hebrew Dates → Google Calendar</h1>
+      <p class="sub" data-i18n="subtitle">Add important Hebrew dates (birthdays, anniversaries, memorials) and download a calendar file with the next 20 years.</p>
+    </header>
+
+    <section class="card">
+      <h2 data-i18n="addEvent">Add an event</h2>
+      <form id="event-form">
+        <label>
+          <span data-i18n="name">Name</span>
+          <input type="text" id="name" data-i18n-placeholder="namePlaceholder" placeholder="e.g. Grandpa David's Yahrzeit" required />
+        </label>
+
+        <div class="type-field">
+          <span class="field-label" data-i18n="type">Type</span>
+          <div class="type-buttons" id="type-buttons">
+            <button type="button" class="type-btn active" data-type="birthday">
+              <span class="icon">🎂</span>
+              <span data-i18n="typeBirthday">Birthday</span>
+            </button>
+            <button type="button" class="type-btn" data-type="anniversary">
+              <span class="icon">💍</span>
+              <span data-i18n="typeAnniversary">Anniversary</span>
+            </button>
+            <button type="button" class="type-btn" data-type="memorial">
+              <span class="icon">🕯️</span>
+              <span data-i18n="typeMemorial">Memorial</span>
+            </button>
+            <button type="button" class="type-btn" data-type="bar_mitzvah">
+              <span class="icon">🎓</span>
+              <span data-i18n="typeBarMitzvah">Bar/Bat Mitzvah</span>
+            </button>
+            <button type="button" class="type-btn" data-type="other">
+              <span class="icon">📅</span>
+              <span data-i18n="typeOther">Other</span>
+            </button>
+          </div>
+          <input type="hidden" id="type" value="birthday" />
+        </div>
+
+        <label id="gender-field" hidden>
+          <span data-i18n="gender">Gender</span>
+          <select id="gender">
+            <option value="boy" data-i18n="genderBoy">Boy (Bar Mitzvah, age 13)</option>
+            <option value="girl" data-i18n="genderGirl">Girl (Bat Mitzvah, age 12)</option>
+          </select>
+        </label>
+
+        <p id="bar-mitzvah-hint" class="hint" hidden data-i18n="barMitzvahHint">Enter the child's date of birth. We'll calculate the Bar Mitzvah date and the Shabbat Bar Mitzvah.</p>
+
+        <fieldset>
+          <legend data-i18n="howKnow">How do you know the date?</legend>
+          <label class="inline">
+            <input type="radio" name="mode" value="gregorian" checked />
+            <span data-i18n="modeGregorian">I know the Gregorian date (we'll convert it)</span>
+          </label>
+          <label class="inline">
+            <input type="radio" name="mode" value="hebrew" />
+            <span data-i18n="modeHebrew">I know the Hebrew date</span>
+          </label>
+        </fieldset>
+
+        <div id="gregorian-input">
+          <label>
+            <span data-i18n="gregorianDate">Gregorian date</span>
+            <input type="date" id="gregorian-date" />
+          </label>
+          <label class="inline">
+            <input type="checkbox" id="after-sunset" />
+            <span data-i18n="afterSunset">The event happened after sunset (count as next Hebrew day)</span>
+          </label>
+        </div>
+
+        <div id="hebrew-input" hidden>
+          <div class="row">
+            <label>
+              <span data-i18n="day">Day</span>
+              <select id="hebrew-day"></select>
+            </label>
+            <label>
+              <span data-i18n="month">Month</span>
+              <select id="hebrew-month">
+                <option value="Tishrei" data-i18n="mTishrei">Tishrei</option>
+                <option value="Cheshvan" data-i18n="mCheshvan">Cheshvan</option>
+                <option value="Kislev" data-i18n="mKislev">Kislev</option>
+                <option value="Tevet" data-i18n="mTevet">Tevet</option>
+                <option value="Shvat" data-i18n="mShvat">Shvat</option>
+                <option value="Adar" data-i18n="mAdar">Adar (or Adar II in leap years)</option>
+                <option value="Adar I" data-i18n="mAdarI">Adar I (leap years only)</option>
+                <option value="Nisan" data-i18n="mNisan">Nisan</option>
+                <option value="Iyyar" data-i18n="mIyyar">Iyyar</option>
+                <option value="Sivan" data-i18n="mSivan">Sivan</option>
+                <option value="Tamuz" data-i18n="mTamuz">Tamuz</option>
+                <option value="Av" data-i18n="mAv">Av</option>
+                <option value="Elul" data-i18n="mElul">Elul</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            <span>
+              <span data-i18n="hebrewYear">Hebrew year</span>
+              <span id="year-optional" class="muted small" data-i18n="optional">(optional)</span>
+              <span id="year-required" class="required-tag small" data-i18n="required" hidden>(required)</span>
+            </span>
+            <input type="text" id="hebrew-year" data-i18n-placeholder="yearPlaceholder" placeholder='e.g. תשפ"ו or 5786' />
+            <span id="year-preview" class="muted small"></span>
+          </label>
+        </div>
+
+        <button type="submit" data-i18n="submit">Add event</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2 data-i18n="yourEvents">Your events</h2>
+      <ul id="event-list"></ul>
+      <p id="empty-msg" class="muted" data-i18n="empty">No events yet. Add one above.</p>
+    </section>
+
+    <section class="card" id="sync-card">
+      <h2 data-i18n="googleSync">Sync to Google Calendar</h2>
+
+      <div id="gcal-connect" hidden>
+        <button id="connect-btn" type="button" data-i18n="connectGoogle">Connect Google Calendar</button>
+      </div>
+
+      <div id="gcal-connected" hidden>
+        <p class="muted small">
+          <span data-i18n="connectedStatus">✓ Connected to Google.</span>
+          <a href="#" id="disconnect-btn" data-i18n="disconnect">Disconnect</a>
+        </p>
+        <label>
+          <span data-i18n="calendarName">Calendar name</span>
+          <input type="text" id="calendar-name-input" />
+        </label>
+
+        <div class="calendars-section">
+          <div class="calendars-header">
+            <span class="field-label" data-i18n="existingCalendars">Calendars in your Google account</span>
+            <button id="refresh-cals-btn" class="link-btn" type="button" title="Refresh">↻</button>
+          </div>
+          <ul id="calendar-list" class="calendar-list"></ul>
+          <p id="calendar-list-empty" class="muted small" data-i18n="noCalendarsYet" hidden>No calendars yet — clicking "Sync now" will create one.</p>
+        </div>
+
+        <button id="sync-btn" type="button" data-i18n="syncNow">Sync now</button>
+        <p id="sync-status" class="muted small"></p>
+
+        <div class="share-section">
+          <div class="calendars-header">
+            <span class="field-label" data-i18n="shareCalendar">Share calendar</span>
+          </div>
+          <p class="muted small" data-i18n="shareDesc">Invite friends/family. They'll get an email to add this calendar to their Google Calendar.</p>
+          <div class="share-form">
+            <input type="email" id="share-email" placeholder="email@example.com" />
+            <select id="share-role">
+              <option value="reader" data-i18n="roleReader">Can view</option>
+              <option value="writer" data-i18n="roleWriter">Can edit</option>
+            </select>
+            <button id="share-btn" type="button" data-i18n="shareBtn">Share</button>
+          </div>
+          <ul id="share-list" class="share-list"></ul>
+          <p id="share-status" class="muted small"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 data-i18n="export">Export</h2>
+      <p data-i18n="exportDesc">Generate a calendar file with the next <strong>20 years</strong> of these dates.</p>
+      <button id="download-btn" type="button" data-i18n="downloadBtn">Download .ics file</button>
+      <p class="muted small" data-i18n="importHint">Import into Google Calendar via Settings → Import & export.</p>
+    </section>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
