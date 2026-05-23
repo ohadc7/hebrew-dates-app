@@ -254,10 +254,15 @@ button:hover {
 
 #event-list li {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 8px;
   padding: 10px 0;
   border-bottom: 1px solid #eef0f4;
+}
+
+#event-list .event-info {
+  flex: 1;
+  min-width: 0;
 }
 
 #event-list li:last-child {
@@ -287,6 +292,23 @@ button:hover {
 
 .delete-btn:hover {
   background: #fdecea;
+}
+
+.edit-btn {
+  background: transparent;
+  color: #2c6cf6;
+  font-weight: 500;
+  padding: 4px 8px;
+}
+
+.edit-btn:hover {
+  background: #eef5ff;
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .muted {

@@ -71,6 +71,9 @@ let events = loadEvents();
 const form = document.getElementById('event-form');
 const typeSelect = document.getElementById('type');
 const genderField = document.getElementById('gender-field');
+const submitBtn = document.getElementById('submit-btn');
+const cancelEditBtn = document.getElementById('cancel-edit-btn');
+let editingId = null;
 const modeRadios = document.querySelectorAll('input[name="mode"]');
 const gregorianInput = document.getElementById('gregorian-input');
 const hebrewInput = document.getElementById('hebrew-input');
@@ -116,6 +119,7 @@ function updateYearPreview() {
 populateHebrewDays();
 applyLanguage();
 render();
+updateSubmitButtonText();
 
 function populateHebrewDays() {
   const sel = document.getElementById('hebrew-day');
@@ -132,6 +136,7 @@ function toggleLanguage() {
   setLang(getLang() === 'en' ? 'he' : 'en');
   applyLanguage();
   render();
+  updateSubmitButtonText();
 }
 
 langToggle.addEventListener('click', toggleLanguage);
@@ -190,15 +195,23 @@ form.addEventListener('submit', (e) => {
 
   const gender = type === 'bar_mitzvah' ? document.getElementById('gender').value : null;
 
-  events.push({
-    id: crypto.randomUUID(),
-    name,
-    type,
-    hebDay,
-    hebMonthName,
-    hebYearOrigin: hebYear,
-    gender,
-  });
+  if (editingId) {
+    const idx = events.findIndex(ev => ev.id === editingId);
+    if (idx >= 0) {
+      events[idx] = { ...events[idx], name, type, hebDay, hebMonthName, hebYearOrigin: hebYear, gender };
+    }
+    editingId = null;
+  } else {
+    events.push({
+      id: crypto.randomUUID(),
+      name,
+      type,
+      hebDay,
+      hebMonthName,
+      hebYearOrigin: hebYear,
+      gender,
+    });
+  }
 
   saveEvents();
   render();
@@ -207,6 +220,7 @@ form.addEventListener('submit', (e) => {
   hebrewInput.hidden = true;
   setSelectedType('birthday');
   updateYearPreview();
+  updateSubmitButtonText();
 });
 
 downloadBtn.addEventListener('click', () => {
@@ -230,8 +244,47 @@ list.addEventListener('click', (e) => {
     events = events.filter(ev => ev.id !== id);
     saveEvents();
     render();
+    if (editingId === id) cancelEdit();
+  } else if (e.target.classList.contains('edit-btn')) {
+    startEdit(e.target.dataset.id);
   }
 });
+
+cancelEditBtn.addEventListener('click', cancelEdit);
+
+function startEdit(id) {
+  const ev = events.find(e => e.id === id);
+  if (!ev) return;
+  editingId = id;
+  document.getElementById('name').value = ev.name;
+  setSelectedType(ev.type);
+  document.querySelector('input[name="mode"][value="hebrew"]').checked = true;
+  gregorianInput.hidden = true;
+  hebrewInput.hidden = false;
+  document.getElementById('hebrew-day').value = String(ev.hebDay);
+  document.getElementById('hebrew-month').value = ev.hebMonthName;
+  yearInput.value = ev.hebYearOrigin ? String(ev.hebYearOrigin) : '';
+  updateYearPreview();
+  if (ev.gender) document.getElementById('gender').value = ev.gender;
+  updateSubmitButtonText();
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function cancelEdit() {
+  editingId = null;
+  form.reset();
+  gregorianInput.hidden = false;
+  hebrewInput.hidden = true;
+  setSelectedType('birthday');
+  updateYearPreview();
+  updateSubmitButtonText();
+}
+
+function updateSubmitButtonText() {
+  const dict = translations[getLang()];
+  submitBtn.textContent = editingId ? dict.saveChanges : dict.submit;
+  cancelEditBtn.hidden = !editingId;
+}
 
 function render() {
   const lang = getLang();
@@ -255,6 +308,7 @@ function renderRegularItem(ev, dict, lang) {
       <span class="event-name">${escapeHtml(ev.name)}</span>
       <span class="event-meta">${labelForType(ev.type)} • ${dateStr}${counterStr ? ' • ' + counterStr : ''}</span>
     </div>
+    <button class="edit-btn" data-id="${ev.id}" type="button">${dict.edit}</button>
     <button class="delete-btn" data-id="${ev.id}" type="button">${dict.remove}</button>
   `;
 }
@@ -299,6 +353,7 @@ function renderBarMitzvahItem(ev, dict, lang) {
       <span class="event-meta event-sub">🕍 ${dict[shabbatKey]}: ${shabbatStr} · ${shabbatGregStr}</span>
       ${parshaLine}
     </div>
+    <button class="edit-btn" data-id="${ev.id}" type="button">${dict.edit}</button>
     <button class="delete-btn" data-id="${ev.id}" type="button">${dict.remove}</button>
   `;
 }
