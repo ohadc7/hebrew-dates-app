@@ -774,6 +774,7 @@ async function loadEventsFromGoogle() {
   }
   const allEvents = await gcal.listAllEvents(calendarId);
   const bySourceId = new Map();
+  // First pass: events with full source metadata
   for (const ge of allEvents) {
     const props = ge.extendedProperties?.private;
     if (!props?.sourceId) continue;
@@ -788,7 +789,66 @@ async function loadEventsFromGoogle() {
       gender: props.sourceGender || null,
     });
   }
+  // Second pass: legacy events without metadata — recover from iCalUID + summary
+  for (const ge of allEvents) {
+    if (ge.extendedProperties?.private?.sourceId) continue;
+    const sourceId = extractSourceIdFromUID(ge.iCalUID || '');
+    if (!sourceId || bySourceId.has(sourceId)) continue;
+    const parsed = parseLegacyEvent(ge, sourceId);
+    if (parsed) bySourceId.set(sourceId, parsed);
+  }
   return Array.from(bySourceId.values());
+}
+
+function extractSourceIdFromUID(uid) {
+  if (!uid.endsWith('@hebrew-dates-app')) return null;
+  const stripped = uid.slice(0, -'@hebrew-dates-app'.length);
+  const m = stripped.match(/^(.+?)(?:-\d+|-bm(?:-shabbat)?)$/);
+  return m ? m[1] : null;
+}
+
+function parseLegacyEvent(ge, sourceId) {
+  if (ge.iCalUID?.includes('-bm-shabbat@')) return null; // Shabbat sub-event of bar mitzvah
+  const summary = ge.summary || '';
+  const iconMap = {
+    '🎂': 'birthday', '💍': 'anniversary', '🕯️': 'memorial',
+    '🎓': 'bar_mitzvah', '📅': 'other',
+  };
+  let type = null;
+  let name = summary;
+  for (const [icon, t] of Object.entries(iconMap)) {
+    if (summary.startsWith(icon)) {
+      type = t;
+      name = summary.slice(icon.length).trim();
+      break;
+    }
+  }
+  if (!type) return null;
+  const counterMatch = name.match(/^(.+?)\s*\((\d+)\)\s*$/);
+  if (counterMatch) name = counterMatch[1].trim();
+  if (type === 'bar_mitzvah') {
+    const bmMatch = name.match(/^.+?:\s*(.+?)(?:\s+—\s+.+)?$/);
+    if (bmMatch) name = bmMatch[1].trim();
+  }
+  const dateStr = ge.start?.date;
+  if (!dateStr) return null;
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  const hd = new HDate(new Date(y, mo - 1, d));
+  return {
+    id: sourceId,
+    name,
+    type,
+    hebDay: hd.getDate(),
+    hebMonthName: hd.getMonthName(),
+    hebYearOrigin: null,
+    gender: type === 'bar_mitzvah' ? 'boy' : null,
+  };
+}
+
+function isOurEvent(ge) {
+  if (ge.extendedProperties?.private?.sourceId) return true;
+  if (ge.iCalUID?.endsWith('@hebrew-dates-app')) return true;
+  return false;
 }
 
 async function syncToGoogle() {
@@ -845,7 +905,7 @@ async function syncToGoogle() {
     }
 
     for (const [uid, ex] of existingByUid) {
-      if (!desiredByUid.has(uid) && ex.status !== 'cancelled') {
+      if (!desiredByUid.has(uid) && ex.status !== 'cancelled' && isOurEvent(ex)) {
         await gcal.deleteEvent(calendarId, ex.id);
         deleted++;
       }
