@@ -1,4 +1,4 @@
-import { HDate, Sedra } from 'https://esm.sh/@hebcal/core@5';
+import { HDate, Sedra } from 'https://esm.sh/@hebcal/core@5.10.0';
 import { translations, getLang, setLang, t, applyLanguage } from './i18n.js';
 import * as gcal from './googleCalendar.js';
 
@@ -286,31 +286,45 @@ function updateSubmitButtonText() {
   cancelEditBtn.hidden = !editingId;
 }
 
+function el(tag, props = {}, children = []) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (v == null) continue;
+    if (k === 'className') e.className = v;
+    else if (k === 'dataset') Object.assign(e.dataset, v);
+    else if (k === 'textContent') e.textContent = v;
+    else e.setAttribute(k, v);
+  }
+  for (const c of (Array.isArray(children) ? children : [children])) {
+    if (c == null || c === false) continue;
+    e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+  }
+  return e;
+}
+
 function render() {
   const lang = getLang();
   const dict = translations[lang];
-  list.innerHTML = '';
+  list.replaceChildren();
   emptyMsg.style.display = events.length === 0 ? 'block' : 'none';
   for (const ev of events) {
     const li = document.createElement('li');
-    li.innerHTML = ev.type === 'bar_mitzvah'
-      ? renderBarMitzvahItem(ev, dict, lang)
-      : renderRegularItem(ev, dict, lang);
+    if (ev.type === 'bar_mitzvah') appendBarMitzvahItem(li, ev, dict, lang);
+    else appendRegularItem(li, ev, dict, lang);
     list.appendChild(li);
   }
 }
 
-function renderRegularItem(ev, dict, lang) {
+function appendRegularItem(li, ev, dict, lang) {
   const dateStr = formatHebrewDate(ev.hebDay, ev.hebMonthName, ev.hebYearOrigin, lang, dict);
   const counterStr = formatCounter(ev, dict);
-  return `
-    <div class="event-info">
-      <span class="event-name">${escapeHtml(ev.name)}</span>
-      <span class="event-meta">${labelForType(ev.type)} • ${dateStr}${counterStr ? ' • ' + counterStr : ''}</span>
-    </div>
-    <button class="edit-btn" data-id="${ev.id}" type="button">${dict.edit}</button>
-    <button class="delete-btn" data-id="${ev.id}" type="button">${dict.remove}</button>
-  `;
+  const meta = `${labelForType(ev.type)} • ${dateStr}${counterStr ? ' • ' + counterStr : ''}`;
+  li.appendChild(el('div', { className: 'event-info' }, [
+    el('span', { className: 'event-name', textContent: ev.name }),
+    el('span', { className: 'event-meta', textContent: meta }),
+  ]));
+  li.appendChild(el('button', { className: 'edit-btn', type: 'button', dataset: { id: ev.id }, textContent: dict.edit }));
+  li.appendChild(el('button', { className: 'delete-btn', type: 'button', dataset: { id: ev.id }, textContent: dict.remove }));
 }
 
 function formatCounter(ev, dict) {
@@ -322,11 +336,11 @@ function formatCounter(ev, dict) {
   return `${n} ${word}`;
 }
 
-function renderBarMitzvahItem(ev, dict, lang) {
+function appendBarMitzvahItem(li, ev, dict, lang) {
   const age = ev.gender === 'girl' ? 12 : 13;
-  const bmYear = ev.hebYearOrigin + age;
+  const bmYear = (ev.hebYearOrigin ?? 0) + age;
   const bmHd = resolveHebrewDate(ev.hebDay, ev.hebMonthName, bmYear);
-  if (!bmHd) return renderRegularItem(ev, dict, lang);
+  if (!bmHd) { appendRegularItem(li, ev, dict, lang); return; }
   const bmGreg = bmHd.greg();
   const shabbat = shabbatOnOrAfter(bmGreg);
   const shabbatHd = new HDate(shabbat);
@@ -339,23 +353,17 @@ function renderBarMitzvahItem(ev, dict, lang) {
   const shabbatStr = formatHebrewDate(shabbatHd.getDate(), shabbatHd.getMonthName(), shabbatHd.getFullYear(), lang, dict);
   const bmGregStr = formatGreg(bmGreg, lang);
   const shabbatGregStr = formatGreg(shabbat, lang);
-
   const parsha = formatParsha(getParsha(shabbatHd, lang), lang);
-  const parshaLine = parsha
-    ? `<span class="event-meta event-sub">📖 ${escapeHtml(parsha)}</span>`
-    : '';
 
-  return `
-    <div class="event-info">
-      <span class="event-name">${escapeHtml(ev.name)}</span>
-      <span class="event-meta">${dict.typeBarMitzvah} • ${dict.dob}: ${dobStr}</span>
-      <span class="event-meta event-sub">🎓 ${dict[labelKey]}: ${bmStr} · ${bmGregStr}</span>
-      <span class="event-meta event-sub">🕍 ${dict[shabbatKey]}: ${shabbatStr} · ${shabbatGregStr}</span>
-      ${parshaLine}
-    </div>
-    <button class="edit-btn" data-id="${ev.id}" type="button">${dict.edit}</button>
-    <button class="delete-btn" data-id="${ev.id}" type="button">${dict.remove}</button>
-  `;
+  li.appendChild(el('div', { className: 'event-info' }, [
+    el('span', { className: 'event-name', textContent: ev.name }),
+    el('span', { className: 'event-meta', textContent: `${dict.typeBarMitzvah} • ${dict.dob}: ${dobStr}` }),
+    el('span', { className: 'event-meta event-sub', textContent: `🎓 ${dict[labelKey]}: ${bmStr} · ${bmGregStr}` }),
+    el('span', { className: 'event-meta event-sub', textContent: `🕍 ${dict[shabbatKey]}: ${shabbatStr} · ${shabbatGregStr}` }),
+    parsha ? el('span', { className: 'event-meta event-sub', textContent: `📖 ${parsha}` }) : null,
+  ]));
+  li.appendChild(el('button', { className: 'edit-btn', type: 'button', dataset: { id: ev.id }, textContent: dict.edit }));
+  li.appendChild(el('button', { className: 'delete-btn', type: 'button', dataset: { id: ev.id }, textContent: dict.remove }));
 }
 
 function formatHebrewDate(day, month, year, lang, dict) {
@@ -398,10 +406,42 @@ function saveEvents() {
 
 function loadEvents() {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+    return raw.map(validateEvent).filter(Boolean);
   } catch {
     return [];
   }
+}
+
+const VALID_TYPES = new Set(['birthday', 'anniversary', 'memorial', 'bar_mitzvah', 'other']);
+const VALID_MONTHS = new Set([
+  'Nisan', 'Iyyar', 'Sivan', 'Tamuz', 'Av', 'Elul', 'Tishrei',
+  'Cheshvan', 'Kislev', 'Tevet', 'Shvat', "Sh'vat",
+  'Adar', 'Adar I', 'Adar II',
+]);
+
+function validateEvent(ev) {
+  if (!ev || typeof ev !== 'object') return null;
+  if (typeof ev.id !== 'string' || !/^[a-zA-Z0-9-]{1,100}$/.test(ev.id)) return null;
+  if (typeof ev.name !== 'string' || ev.name.length === 0 || ev.name.length > 200) return null;
+  if (!VALID_TYPES.has(ev.type)) return null;
+  if (!Number.isInteger(ev.hebDay) || ev.hebDay < 1 || ev.hebDay > 30) return null;
+  if (typeof ev.hebMonthName !== 'string' || !VALID_MONTHS.has(ev.hebMonthName)) return null;
+  const yearOk = ev.hebYearOrigin === null || ev.hebYearOrigin === undefined
+    || (Number.isInteger(ev.hebYearOrigin) && ev.hebYearOrigin >= 3000 && ev.hebYearOrigin <= 7000);
+  if (!yearOk) return null;
+  const genderOk = ev.gender === null || ev.gender === undefined
+    || ev.gender === 'boy' || ev.gender === 'girl';
+  if (!genderOk) return null;
+  return {
+    id: ev.id,
+    name: ev.name,
+    type: ev.type,
+    hebDay: ev.hebDay,
+    hebMonthName: ev.hebMonthName,
+    hebYearOrigin: ev.hebYearOrigin ?? null,
+    gender: ev.gender ?? null,
+  };
 }
 
 function buildEventsForExport(events, years) {
@@ -487,9 +527,11 @@ function generateICS(events, years) {
   ];
   const stamp = formatICSTimestamp(new Date());
   for (const ev of buildEventsForExport(events, years)) {
+    const uid = safeUID(ev.uid);
+    if (!uid) continue;
     lines.push(
       'BEGIN:VEVENT',
-      `UID:${ev.uid}`,
+      `UID:${uid}`,
       `DTSTAMP:${stamp}`,
       `DTSTART;VALUE=DATE:${formatICSDate(ev.start)}`,
       `DTEND;VALUE=DATE:${formatICSDate(ev.end)}`,
@@ -580,7 +622,17 @@ function formatICSTimestamp(d) {
 }
 
 function icsEscape(s) {
-  return s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+  return String(s)
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // strip control chars except \t \n \r
+    .replace(/\\/g, '\\\\')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,')
+    .replace(/\r\n|\r|\n/g, '\\n');
+}
+
+const UID_RE = /^[a-zA-Z0-9-]+-(?:\d+|bm|bm-shabbat)@hebrew-dates-app$/;
+function safeUID(uid) {
+  return UID_RE.test(uid) ? uid : null;
 }
 
 // ─── Google Calendar sync ───────────────────────────────────────────────
@@ -615,6 +667,7 @@ shareBtn.addEventListener('click', async () => {
   }
   shareBtn.disabled = true;
   try {
+    await gcal.requestAclAccess();
     await gcal.addAcl(calId, email, role);
     shareStatus.textContent = t('shareAdded').replace('{email}', email);
     shareEmailInput.value = '';
@@ -636,6 +689,7 @@ shareListEl.addEventListener('click', async (e) => {
   if (!calId || !ruleId) return;
   if (!confirm(t('removeShareConfirm').replace('{email}', email))) return;
   try {
+    await gcal.requestAclAccess();
     await gcal.removeAcl(calId, ruleId);
     shareStatus.textContent = t('shareRemoved').replace('{email}', email);
     refreshShareList();
@@ -649,27 +703,34 @@ async function refreshShareList() {
   if (!gcal.isSignedIn()) return;
   const calId = gcal.getCalendarId();
   if (!calId) {
-    shareListEl.innerHTML = '';
+    shareListEl.replaceChildren();
     return;
   }
   try {
     const acls = await gcal.listAcl(calId);
     const dict = translations[getLang()];
-    shareListEl.innerHTML = '';
+    shareListEl.replaceChildren();
     for (const rule of acls) {
       if (rule.scope?.type !== 'user' || rule.role === 'owner') continue;
+      if (typeof rule.id !== 'string' || typeof rule.scope.value !== 'string') continue;
       const email = rule.scope.value;
       const roleLabel = rule.role === 'writer' ? dict.roleWriter : dict.roleReader;
       const li = document.createElement('li');
-      li.innerHTML = `
-        <span class="share-email">${escapeHtml(email)}</span>
-        <span class="share-role-tag">${roleLabel}</span>
-        <button class="delete-btn remove-share-btn" type="button" data-rule-id="${escapeHtml(rule.id)}" data-email="${escapeHtml(email)}">${dict.remove}</button>
-      `;
+      li.appendChild(el('span', { className: 'share-email', textContent: email }));
+      li.appendChild(el('span', { className: 'share-role-tag', textContent: roleLabel }));
+      li.appendChild(el('button', {
+        className: 'delete-btn remove-share-btn', type: 'button',
+        dataset: { ruleId: rule.id, email },
+        textContent: dict.remove,
+      }));
       shareListEl.appendChild(li);
     }
   } catch (err) {
-    console.warn('Failed to list ACLs', err);
+    // Most likely the user hasn't granted the ACL scope yet — that's expected
+    // because we only request it lazily when they click Share. Silent.
+    if (!String(err.message).includes('insufficient')) {
+      console.warn('Failed to list ACLs', err);
+    }
   }
 }
 
@@ -700,7 +761,7 @@ async function refreshCalendarList() {
   try {
     const calendars = await gcal.listCalendars();
     const activeId = gcal.getCalendarId();
-    calendarListEl.innerHTML = '';
+    calendarListEl.replaceChildren();
     calendarListEmpty.hidden = calendars.length > 0;
     const dict = translations[getLang()];
     for (const cal of calendars) {
@@ -708,11 +769,13 @@ async function refreshCalendarList() {
       li.dataset.calId = cal.id;
       li.dataset.calName = cal.name;
       if (cal.id === activeId) li.classList.add('active');
-      li.innerHTML = `
-        <span class="calendar-dot" style="background:${colorFromId(cal.id)}"></span>
-        <span class="calendar-name-text">${escapeHtml(cal.name)}</span>
-        ${cal.id === activeId ? `<span class="calendar-badge">${dict.activeBadge}</span>` : ''}
-      `;
+      const dot = el('span', { className: 'calendar-dot' });
+      dot.style.background = colorFromId(cal.id);
+      li.appendChild(dot);
+      li.appendChild(el('span', { className: 'calendar-name-text', textContent: cal.name }));
+      if (cal.id === activeId) {
+        li.appendChild(el('span', { className: 'calendar-badge', textContent: dict.activeBadge }));
+      }
       calendarListEl.appendChild(li);
     }
   } catch (err) {
@@ -834,15 +897,17 @@ async function loadEventsFromGoogle() {
     const props = ge.extendedProperties?.private;
     if (!props?.sourceId) continue;
     if (bySourceId.has(props.sourceId)) continue;
-    bySourceId.set(props.sourceId, {
+    const candidate = {
       id: props.sourceId,
-      name: props.sourceName,
+      name: typeof props.sourceName === 'string' ? props.sourceName : '',
       type: props.sourceType,
       hebDay: parseInt(props.sourceDay, 10),
       hebMonthName: props.sourceMonth,
       hebYearOrigin: props.sourceYearOrigin ? parseInt(props.sourceYearOrigin, 10) : null,
       gender: props.sourceGender || null,
-    });
+    };
+    const validated = validateEvent(candidate);
+    if (validated) bySourceId.set(validated.id, validated);
   }
   // Second pass: legacy events without metadata — recover from iCalUID + summary
   for (const ge of allEvents) {
@@ -850,7 +915,8 @@ async function loadEventsFromGoogle() {
     const sourceId = extractSourceIdFromUID(ge.iCalUID || '');
     if (!sourceId || bySourceId.has(sourceId)) continue;
     const parsed = parseLegacyEvent(ge, sourceId);
-    if (parsed) bySourceId.set(sourceId, parsed);
+    const validated = parsed && validateEvent(parsed);
+    if (validated) bySourceId.set(validated.id, validated);
   }
   return Array.from(bySourceId.values());
 }
