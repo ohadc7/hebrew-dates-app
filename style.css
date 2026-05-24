@@ -250,14 +250,19 @@ button:hover {
   list-style: none;
   padding: 0;
   margin: 0;
+  display: grid;
+  gap: 10px;
 }
 
-#event-list li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 0;
-  border-bottom: 1px solid #eef0f4;
+#event-list li.event-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #e4e8f0;
+  border-radius: 8px;
+  background: #fbfcff;
 }
 
 #event-list .event-info {
@@ -272,15 +277,49 @@ button:hover {
 .event-info {
   display: flex;
   flex-direction: column;
+  gap: 2px;
+  position: relative;
+  padding-inline-start: 34px;
+}
+
+.event-icon {
+  position: absolute;
+  inset-inline-start: 0;
+  top: 1px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: #eef5ff;
+  font-size: 1rem;
 }
 
 .event-name {
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .event-meta {
   font-size: 0.85rem;
   color: #5a6275;
+}
+
+.event-next {
+  width: fit-content;
+  margin-top: 3px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #eaf7f0;
+  color: #276749;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.event-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .delete-btn {
@@ -309,6 +348,38 @@ button:hover {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.event-preview {
+  margin: 4px 0 14px;
+  padding: 12px;
+  border: 1px solid #dbe6ff;
+  border-radius: 8px;
+  background: #f7faff;
+  display: grid;
+  gap: 3px;
+}
+
+.preview-label {
+  color: #5a6275;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+#event-preview-title {
+  color: #1f2330;
+  font-size: 0.98rem;
+}
+
+#event-preview-title.preview-warning {
+  color: #9a3412;
+}
+
+#event-preview-meta {
+  color: #5a6275;
+  font-size: 0.86rem;
 }
 
 .muted {
@@ -553,6 +624,75 @@ button:hover {
   background: #eef0f4;
   padding: 1px 8px;
   border-radius: 10px;
+}
+
+.toast {
+  position: fixed;
+  inset-inline: 16px;
+  bottom: 16px;
+  z-index: 1100;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #1f2330;
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.18);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.toast .link-btn {
+  color: #9ec5ff;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.toast .link-btn:hover {
+  background: rgba(255,255,255,0.1);
+}
+
+.app-footer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 28px;
+  color: #8a92a4;
+  font-size: 0.85rem;
+}
+
+.app-footer a {
+  color: #2c6cf6;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.app-footer a:hover {
+  text-decoration: underline;
+}
+
+.app-footer a::before {
+  content: "•";
+  color: #c7cdd8;
+  margin-inline-end: 8px;
+}
+
+@media (max-width: 560px) {
+  #event-list li.event-card {
+    grid-template-columns: 1fr;
+  }
+
+  .event-actions {
+    justify-content: flex-end;
+  }
+
+  .share-form {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* RTL adjustments */

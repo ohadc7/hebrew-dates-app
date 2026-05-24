@@ -74,6 +74,8 @@ const genderField = document.getElementById('gender-field');
 const submitBtn = document.getElementById('submit-btn');
 const cancelEditBtn = document.getElementById('cancel-edit-btn');
 let editingId = null;
+let pendingDelete = null;
+let toastTimer = null;
 const modeRadios = document.querySelectorAll('input[name="mode"]');
 const gregorianInput = document.getElementById('gregorian-input');
 const hebrewInput = document.getElementById('hebrew-input');
@@ -86,6 +88,11 @@ const barMitzvahHint = document.getElementById('bar-mitzvah-hint');
 const yearInput = document.getElementById('hebrew-year');
 const yearPreview = document.getElementById('year-preview');
 const typeButtons = document.getElementById('type-buttons');
+const eventPreviewTitle = document.getElementById('event-preview-title');
+const eventPreviewMeta = document.getElementById('event-preview-meta');
+const toast = document.getElementById('toast');
+const toastText = document.getElementById('toast-text');
+const toastAction = document.getElementById('toast-action');
 
 typeButtons.addEventListener('click', (e) => {
   const btn = e.target.closest('.type-btn');
@@ -99,6 +106,7 @@ function setSelectedType(type) {
     b.classList.toggle('active', b.dataset.type === type);
   });
   updateTypeSpecificFields();
+  updateEventPreview();
 }
 
 function updateTypeSpecificFields() {
@@ -120,6 +128,7 @@ populateHebrewDays();
 applyLanguage();
 render();
 updateSubmitButtonText();
+updateEventPreview();
 
 function populateHebrewDays() {
   const sel = document.getElementById('hebrew-day');
@@ -137,6 +146,7 @@ function toggleLanguage() {
   applyLanguage();
   render();
   updateSubmitButtonText();
+  updateEventPreview();
 }
 
 langToggle.addEventListener('click', toggleLanguage);
@@ -146,59 +156,25 @@ modeRadios.forEach(r => r.addEventListener('change', () => {
   const mode = document.querySelector('input[name="mode"]:checked').value;
   gregorianInput.hidden = mode !== 'gregorian';
   hebrewInput.hidden = mode !== 'hebrew';
+  updateEventPreview();
 }));
+
+form.addEventListener('input', updateEventPreview);
+form.addEventListener('change', updateEventPreview);
 
 form.addEventListener('submit', (e) => {
   e.preventDefault();
-  const name = document.getElementById('name').value.trim();
-  const type = document.getElementById('type').value;
-  const mode = document.querySelector('input[name="mode"]:checked').value;
-
-  let hebDay, hebMonthName, hebYear;
-
-  if (mode === 'gregorian') {
-    const dateStr = document.getElementById('gregorian-date').value;
-    if (!dateStr) {
-      alert(t('alertPickDate'));
-      return;
-    }
-    const [y, m, d] = dateStr.split('-').map(Number);
-    const afterSunset = document.getElementById('after-sunset').checked;
-    let hd = new HDate(new Date(y, m - 1, d));
-    if (afterSunset) hd = hd.next();
-    hebDay = hd.getDate();
-    hebMonthName = hd.getMonthName();
-    hebYear = hd.getFullYear();
-  } else {
-    hebDay = parseInt(document.getElementById('hebrew-day').value, 10);
-    hebMonthName = document.getElementById('hebrew-month').value;
-    const yearStr = yearInput.value.trim();
-    if (yearStr) {
-      hebYear = parseHebrewYear(yearStr);
-      if (!hebYear) {
-        alert(t('alertBadYear'));
-        return;
-      }
-    } else {
-      hebYear = null;
-    }
-    if (!hebDay || !hebMonthName) {
-      alert(t('alertHebrewDate'));
-      return;
-    }
-  }
-
-  if (type === 'bar_mitzvah' && !hebYear) {
-    alert(t('alertYearRequired'));
+  const draft = readEventDraft({ requireComplete: true });
+  if (draft.errorKey) {
+    alert(t(draft.errorKey));
     return;
   }
-
-  const gender = type === 'bar_mitzvah' ? document.getElementById('gender').value : null;
+  const { name, type, hebDay, hebMonthName, hebYearOrigin, gender } = draft.event;
 
   if (editingId) {
     const idx = events.findIndex(ev => ev.id === editingId);
     if (idx >= 0) {
-      events[idx] = { ...events[idx], name, type, hebDay, hebMonthName, hebYearOrigin: hebYear, gender };
+      events[idx] = { ...events[idx], name, type, hebDay, hebMonthName, hebYearOrigin, gender };
     }
     editingId = null;
   } else {
@@ -208,7 +184,7 @@ form.addEventListener('submit', (e) => {
       type,
       hebDay,
       hebMonthName,
-      hebYearOrigin: hebYear,
+      hebYearOrigin,
       gender,
     });
   }
@@ -221,7 +197,95 @@ form.addEventListener('submit', (e) => {
   setSelectedType('birthday');
   updateYearPreview();
   updateSubmitButtonText();
+  updateEventPreview();
 });
+
+function readEventDraft({ requireComplete = false } = {}) {
+  const name = document.getElementById('name').value.trim();
+  const type = document.getElementById('type').value;
+  const mode = document.querySelector('input[name="mode"]:checked').value;
+  let hebDay, hebMonthName, hebYearOrigin;
+
+  if (requireComplete && !name) return { errorKey: 'alertNameRequired' };
+
+  if (mode === 'gregorian') {
+    const dateStr = document.getElementById('gregorian-date').value;
+    if (!dateStr) return requireComplete ? { errorKey: 'alertPickDate' } : { event: null };
+    const [y, m, d] = dateStr.split('-').map(Number);
+    if (!y || !m || !d) return { errorKey: 'alertPickDate' };
+    const afterSunset = document.getElementById('after-sunset').checked;
+    let hd = new HDate(new Date(y, m - 1, d));
+    if (afterSunset) hd = hd.next();
+    hebDay = hd.getDate();
+    hebMonthName = hd.getMonthName();
+    hebYearOrigin = hd.getFullYear();
+  } else {
+    hebDay = parseInt(document.getElementById('hebrew-day').value, 10);
+    hebMonthName = document.getElementById('hebrew-month').value;
+    const yearStr = yearInput.value.trim();
+    if (yearStr) {
+      hebYearOrigin = parseHebrewYear(yearStr);
+      if (!hebYearOrigin) return { errorKey: 'alertBadYear' };
+    } else {
+      hebYearOrigin = null;
+    }
+    if (!hebDay || !hebMonthName) {
+      return requireComplete ? { errorKey: 'alertHebrewDate' } : { event: null };
+    }
+  }
+
+  if (type === 'bar_mitzvah' && !hebYearOrigin) {
+    return requireComplete ? { errorKey: 'alertYearRequired' } : { errorKey: 'previewYearRequired' };
+  }
+
+  return {
+    event: {
+      id: editingId || 'preview',
+      name,
+      type,
+      hebDay,
+      hebMonthName,
+      hebYearOrigin,
+      gender: type === 'bar_mitzvah' ? document.getElementById('gender').value : null,
+    },
+  };
+}
+
+function updateEventPreview() {
+  const dict = translations[getLang()];
+  const draft = readEventDraft({ requireComplete: false });
+  eventPreviewTitle.classList.toggle('preview-warning', !!draft.errorKey);
+
+  if (draft.errorKey) {
+    eventPreviewTitle.textContent = t(draft.errorKey);
+    eventPreviewMeta.textContent = '';
+    return;
+  }
+  if (!draft.event) {
+    eventPreviewTitle.textContent = dict.previewEmpty;
+    eventPreviewMeta.textContent = '';
+    return;
+  }
+
+  const previewEvent = {
+    ...draft.event,
+    name: draft.event.name || labelForType(draft.event.type),
+  };
+  eventPreviewTitle.textContent = `${labelIcon(previewEvent.type)} ${previewEvent.name}`;
+  eventPreviewMeta.textContent = buildPreviewLine(previewEvent, dict, getLang());
+}
+
+function buildPreviewLine(ev, dict, lang) {
+  if (ev.type === 'bar_mitzvah') {
+    const next = getNextBarMitzvahOccurrence(ev, dict);
+    if (!next) return dict.noUpcoming;
+    return `${next.label}: ${formatGreg(next.date, lang)} · ${formatHebrewDateFromDate(next.date, lang, dict)} · ${formatDaysUntil(next.date, dict)}`;
+  }
+
+  const next = getNextOccurrence(ev);
+  if (!next) return dict.noUpcoming;
+  return `${dict.nextOccurrence}: ${formatGreg(next.date, lang)} · ${formatHebrewDate(next.hd.getDate(), next.hd.getMonthName(), next.hd.getFullYear(), lang, dict)} · ${formatDaysUntil(next.date, dict)}`;
+}
 
 downloadBtn.addEventListener('click', () => {
   if (events.length === 0) {
@@ -240,17 +304,48 @@ downloadBtn.addEventListener('click', () => {
 
 list.addEventListener('click', (e) => {
   if (e.target.classList.contains('delete-btn')) {
-    const id = e.target.dataset.id;
-    events = events.filter(ev => ev.id !== id);
-    saveEvents();
-    render();
-    if (editingId === id) cancelEdit();
+    deleteEventWithUndo(e.target.dataset.id);
   } else if (e.target.classList.contains('edit-btn')) {
     startEdit(e.target.dataset.id);
   }
 });
 
 cancelEditBtn.addEventListener('click', cancelEdit);
+toastAction.addEventListener('click', undoDelete);
+
+function deleteEventWithUndo(id) {
+  const idx = events.findIndex(ev => ev.id === id);
+  if (idx < 0) return;
+  const [removed] = events.splice(idx, 1);
+  pendingDelete = { event: removed, index: idx };
+  saveEvents();
+  render();
+  if (editingId === id) cancelEdit();
+  showToast(t('eventDeleted').replace('{name}', removed.name), t('undoDelete'));
+}
+
+function showToast(message, actionLabel) {
+  if (toastTimer) clearTimeout(toastTimer);
+  toastText.textContent = message;
+  toastAction.textContent = actionLabel;
+  toast.hidden = false;
+  toastTimer = setTimeout(hideToast, 7000);
+}
+
+function hideToast() {
+  toast.hidden = true;
+  pendingDelete = null;
+  toastTimer = null;
+}
+
+function undoDelete() {
+  if (!pendingDelete) return;
+  const { event, index } = pendingDelete;
+  events.splice(Math.min(index, events.length), 0, event);
+  saveEvents();
+  render();
+  hideToast();
+}
 
 function startEdit(id) {
   const ev = events.find(e => e.id === id);
@@ -267,6 +362,7 @@ function startEdit(id) {
   updateYearPreview();
   if (ev.gender) document.getElementById('gender').value = ev.gender;
   updateSubmitButtonText();
+  updateEventPreview();
   form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -278,6 +374,7 @@ function cancelEdit() {
   setSelectedType('birthday');
   updateYearPreview();
   updateSubmitButtonText();
+  updateEventPreview();
 }
 
 function updateSubmitButtonText() {
@@ -309,6 +406,7 @@ function render() {
   emptyMsg.style.display = events.length === 0 ? 'block' : 'none';
   for (const ev of events) {
     const li = document.createElement('li');
+    li.className = `event-card event-card-${ev.type}`;
     if (ev.type === 'bar_mitzvah') appendBarMitzvahItem(li, ev, dict, lang);
     else appendRegularItem(li, ev, dict, lang);
     list.appendChild(li);
@@ -318,13 +416,19 @@ function render() {
 function appendRegularItem(li, ev, dict, lang) {
   const dateStr = formatHebrewDate(ev.hebDay, ev.hebMonthName, ev.hebYearOrigin, lang, dict);
   const counterStr = formatCounter(ev, dict);
-  const meta = `${labelForType(ev.type)} • ${dateStr}${counterStr ? ' • ' + counterStr : ''}`;
+  const next = getNextOccurrence(ev);
   li.appendChild(el('div', { className: 'event-info' }, [
+    el('span', { className: 'event-icon', textContent: labelIcon(ev.type) }),
     el('span', { className: 'event-name', textContent: ev.name }),
-    el('span', { className: 'event-meta', textContent: meta }),
+    el('span', { className: 'event-meta', textContent: `${labelForType(ev.type)} • ${dateStr}${counterStr ? ' • ' + counterStr : ''}` }),
+    el('span', {
+      className: 'event-next',
+      textContent: next
+        ? `${dict.nextOccurrence}: ${formatGreg(next.date, lang)} · ${formatDaysUntil(next.date, dict)}`
+        : dict.noUpcoming,
+    }),
   ]));
-  li.appendChild(el('button', { className: 'edit-btn', type: 'button', dataset: { id: ev.id }, textContent: dict.edit }));
-  li.appendChild(el('button', { className: 'delete-btn', type: 'button', dataset: { id: ev.id }, textContent: dict.remove }));
+  li.appendChild(eventActions(ev, dict));
 }
 
 function formatCounter(ev, dict) {
@@ -354,16 +458,122 @@ function appendBarMitzvahItem(li, ev, dict, lang) {
   const bmGregStr = formatGreg(bmGreg, lang);
   const shabbatGregStr = formatGreg(shabbat, lang);
   const parsha = formatParsha(getParsha(shabbatHd, lang), lang);
+  const next = getNextBarMitzvahOccurrence(ev, dict);
 
   li.appendChild(el('div', { className: 'event-info' }, [
+    el('span', { className: 'event-icon', textContent: labelIcon(ev.type) }),
     el('span', { className: 'event-name', textContent: ev.name }),
     el('span', { className: 'event-meta', textContent: `${dict.typeBarMitzvah} • ${dict.dob}: ${dobStr}` }),
+    el('span', {
+      className: 'event-next',
+      textContent: next
+        ? `${next.label}: ${formatGreg(next.date, lang)} · ${formatDaysUntil(next.date, dict)}`
+        : dict.noUpcoming,
+    }),
     el('span', { className: 'event-meta event-sub', textContent: `🎓 ${dict[labelKey]}: ${bmStr} · ${bmGregStr}` }),
     el('span', { className: 'event-meta event-sub', textContent: `🕍 ${dict[shabbatKey]}: ${shabbatStr} · ${shabbatGregStr}` }),
     parsha ? el('span', { className: 'event-meta event-sub', textContent: `📖 ${parsha}` }) : null,
   ]));
-  li.appendChild(el('button', { className: 'edit-btn', type: 'button', dataset: { id: ev.id }, textContent: dict.edit }));
-  li.appendChild(el('button', { className: 'delete-btn', type: 'button', dataset: { id: ev.id }, textContent: dict.remove }));
+  li.appendChild(eventActions(ev, dict));
+}
+
+function eventActions(ev, dict) {
+  return el('div', { className: 'event-actions' }, [
+    el('button', { className: 'edit-btn', type: 'button', dataset: { id: ev.id }, textContent: dict.edit }),
+    el('button', { className: 'delete-btn', type: 'button', dataset: { id: ev.id }, textContent: dict.remove }),
+  ]);
+}
+
+function getNextOccurrence(ev, fromDate = new Date()) {
+  const today = startOfDay(fromDate);
+  const startHebYear = new HDate(today).getFullYear();
+  for (let i = 0; i <= YEARS_AHEAD; i++) {
+    const targetHebYear = startHebYear + i;
+    const hd = resolveHebrewDate(ev.hebDay, ev.hebMonthName, targetHebYear);
+    if (!hd) continue;
+    const counter = ev.hebYearOrigin ? targetHebYear - ev.hebYearOrigin : null;
+    if (counter !== null && counter <= 0) continue;
+    const date = startOfDay(hd.greg());
+    if (date >= today) return { date, hd, counter };
+  }
+  return null;
+}
+
+function getNextBarMitzvahOccurrence(ev, dict, fromDate = new Date()) {
+  const result = [];
+  buildBarMitzvahEvents(result, ev, dict);
+  const today = startOfDay(fromDate);
+  return result
+    .map((item, index) => ({
+      date: startOfDay(item.start),
+      label: index === 0
+        ? (ev.gender === 'girl' ? dict.batMitzvahLabel : dict.barMitzvahLabel)
+        : (ev.gender === 'girl' ? dict.shabbatBatMitzvah : dict.shabbatBarMitzvah),
+    }))
+    .filter(item => item.date >= today)
+    .sort((a, b) => a.date - b.date)[0] || null;
+}
+
+function formatHebrewDateFromDate(date, lang, dict) {
+  const hd = new HDate(date);
+  return formatHebrewDate(hd.getDate(), hd.getMonthName(), hd.getFullYear(), lang, dict);
+}
+
+function formatDaysUntil(date, dict) {
+  const days = Math.round((startOfDay(date) - startOfDay(new Date())) / 86400000);
+  if (days <= 0) return dict.todayLabel;
+  if (days === 1) return dict.tomorrowLabel;
+  if (days < 60) return dict.inDays.replace('{n}', days);
+
+  const duration = calendarDurationUntil(date);
+  const parts = [];
+  if (duration.years > 0) {
+    parts.push(formatDurationUnit(duration.years, dict.yearUnitOne, dict.yearUnitMany));
+    if (duration.months > 0) {
+      parts.push(formatDurationUnit(duration.months, dict.monthUnitOne, dict.monthUnitMany));
+    }
+  } else if (duration.months > 0) {
+    parts.push(formatDurationUnit(duration.months, dict.monthUnitOne, dict.monthUnitMany));
+  }
+
+  if (parts.length === 0) return dict.inDays.replace('{n}', days);
+  return dict.inDuration.replace('{duration}', joinDurationParts(parts));
+}
+
+function calendarDurationUntil(date) {
+  const from = startOfDay(new Date());
+  const to = startOfDay(date);
+  let years = to.getFullYear() - from.getFullYear();
+  let months = to.getMonth() - from.getMonth();
+  let days = to.getDate() - from.getDate();
+
+  if (days < 0) {
+    months -= 1;
+    const previousMonthLastDay = new Date(to.getFullYear(), to.getMonth(), 0).getDate();
+    days += previousMonthLastDay;
+  }
+  if (months < 0) {
+    years -= 1;
+    months += 12;
+  }
+
+  return { years, months, days };
+}
+
+function formatDurationUnit(n, one, many) {
+  return n === 1 ? one : many.replace('{n}', n);
+}
+
+function joinDurationParts(parts) {
+  if (parts.length <= 1) return parts[0] || '';
+  if (getLang() === 'he') return `${parts[0]} ו${parts[1]}`;
+  return `${parts[0]} and ${parts[1]}`;
+}
+
+function startOfDay(date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
 }
 
 function formatHebrewDate(day, month, year, lang, dict) {
@@ -573,7 +783,11 @@ function getParsha(hd, lang) {
 function formatParsha(parsha, lang) {
   if (!parsha) return '';
   if (lang === 'he') {
-    const stripped = parsha.replace(/[֑-ׇ]/g, '').trim();
+    const stripped = parsha
+      .replace(/\u05BE/g, ' ')
+      .replace(/[\u0591-\u05BD\u05BF-\u05C7]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
     return stripped.startsWith('פרשת') ? stripped : `פרשת ${stripped}`;
   }
   return parsha.startsWith('Parashat') || parsha.startsWith('Parshat') ? parsha : `Parshat ${parsha}`;
@@ -972,6 +1186,30 @@ function isOurEvent(ge) {
   return false;
 }
 
+function calculateSyncPlan(desired, desiredByUid, existingByUid) {
+  let created = 0, updated = 0, deleted = 0, skipped = 0;
+  for (const want of desired) {
+    const ex = existingByUid.get(want.uid);
+    const gEvent = toGoogleEvent(want);
+    if (!ex) created++;
+    else if (ex.status === 'cancelled' || gEventChanged(ex, gEvent)) updated++;
+    else skipped++;
+  }
+  for (const [uid, ex] of existingByUid) {
+    if (!desiredByUid.has(uid) && ex.status !== 'cancelled' && isOurEvent(ex)) deleted++;
+  }
+  return { created, updated, deleted, skipped, changed: created + updated + deleted };
+}
+
+function formatSyncPlan(plan, calendarName) {
+  return t('syncPreviewConfirm')
+    .replace('{calendar}', calendarName)
+    .replace('{created}', plan.created)
+    .replace('{updated}', plan.updated)
+    .replace('{deleted}', plan.deleted)
+    .replace('{skipped}', plan.skipped);
+}
+
 async function syncToGoogle() {
   if (!gcal.isSignedIn()) return;
   if (events.length === 0) {
@@ -994,6 +1232,18 @@ async function syncToGoogle() {
     const existingByUid = new Map();
     for (const e of existing) {
       if (e.iCalUID) existingByUid.set(e.iCalUID, e);
+    }
+
+    const plan = calculateSyncPlan(desired, desiredByUid, existingByUid);
+    if (plan.changed === 0) {
+      syncStatus.textContent = t('syncNoChanges').replace('{skipped}', plan.skipped);
+      refreshCalendarList();
+      refreshShareList();
+      return;
+    }
+    if (!confirm(formatSyncPlan(plan, name))) {
+      syncStatus.textContent = t('syncCancelled');
+      return;
     }
 
     let created = 0, updated = 0, deleted = 0, skipped = 0;
