@@ -146,6 +146,12 @@
           </label>
         </div>
 
+        <div id="event-preview" class="event-preview" aria-live="polite">
+          <span class="preview-label" data-i18n="previewLabel">Preview</span>
+          <strong id="event-preview-title" data-i18n="previewEmpty">Choose a date to preview the next occurrence.</strong>
+          <span id="event-preview-meta"></span>
+        </div>
+
         <div class="form-actions">
           <button type="submit" id="submit-btn">Add event</button>
           <button type="button" id="cancel-edit-btn" class="link-btn" hidden data-i18n="cancelEdit">Cancel edit</button>
@@ -213,7 +219,17 @@
       <button id="download-btn" type="button" data-i18n="downloadBtn">Download .ics file</button>
       <p class="muted small" data-i18n="importHint">Import into Google Calendar via Settings → Import & export.</p>
     </section>
+
+    <footer class="app-footer">
+      <span data-i18n="copyrightLine">Copyright 2026 Ohad Cohen</span>
+      <a href="https://github.com/ohadc7/hebrew-dates-app" target="_blank" rel="noopener noreferrer" data-i18n="githubLink">Source on GitHub</a>
+    </footer>
   </main>
+
+  <div id="toast" class="toast" hidden>
+    <span id="toast-text"></span>
+    <button id="toast-action" type="button" class="link-btn"></button>
+  </div>
 
   <script type="module" src="app.js"></script>
 </body>
