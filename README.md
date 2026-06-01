@@ -34,12 +34,24 @@ ES modules require an HTTP server — opening `index.html` via `file://` will no
 
 ## OAuth setup
 
-This app uses two scopes:
+This app uses these scopes:
 
 - `https://www.googleapis.com/auth/calendar.app.created` — for managing events on calendars created by this app
+- `https://www.googleapis.com/auth/calendar.calendarlist.readonly` — for finding this app's dedicated calendars across devices
 - `https://www.googleapis.com/auth/calendar.acls` — for sharing calendars with other users
 
 The Client ID is hardcoded in `googleCalendar.js`. To use your own project, replace the constant `CLIENT_ID`.
+
+## Analytics setup
+
+Analytics is wired through Google Analytics 4, but disabled by default.
+
+1. Create a GA4 property and Web data stream in Google Analytics.
+2. Copy the stream's Measurement ID (`G-...`).
+3. Paste it into `GA_MEASUREMENT_ID` in `analytics.js`.
+4. Deploy the site over HTTPS. Local `file://` previews intentionally do not send analytics.
+
+The app only sends aggregate usage events such as app opens, event creation, ICS downloads, Google sync completion, and calendar sharing role. It does not send names, Hebrew/Gregorian dates, emails, calendar IDs, or other event contents.
 
 ## Deployment
 

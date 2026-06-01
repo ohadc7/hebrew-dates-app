@@ -1,6 +1,7 @@
 import { HDate, Sedra } from 'https://esm.sh/@hebcal/core@5.10.0';
 import { translations, getLang, setLang, t, applyLanguage } from './i18n.js';
 import * as gcal from './googleCalendar.js';
+import { initAnalytics, trackEvent } from './analytics.js';
 
 const STORAGE_KEY = 'hebrew-dates-events';
 const YEARS_AHEAD = 20;
@@ -157,6 +158,7 @@ modeRadios.forEach(r => r.addEventListener('change', () => {
   gregorianInput.hidden = mode !== 'gregorian';
   hebrewInput.hidden = mode !== 'hebrew';
   updateEventPreview();
+  trackEvent('input_mode_selected', { input_mode: mode });
 }));
 
 form.addEventListener('input', updateEventPreview);
@@ -170,6 +172,8 @@ form.addEventListener('submit', (e) => {
     return;
   }
   const { name, type, hebDay, hebMonthName, hebYearOrigin, gender } = draft.event;
+  const wasEditing = Boolean(editingId);
+  const inputMode = document.querySelector('input[name="mode"]:checked').value;
 
   if (editingId) {
     const idx = events.findIndex(ev => ev.id === editingId);
@@ -191,6 +195,7 @@ form.addEventListener('submit', (e) => {
 
   saveEvents();
   render();
+  trackEvent(wasEditing ? 'event_updated' : 'event_added', { type, input_mode: inputMode });
   form.reset();
   gregorianInput.hidden = false;
   hebrewInput.hidden = true;
@@ -300,6 +305,7 @@ downloadBtn.addEventListener('click', () => {
   a.download = 'hebrew-dates.ics';
   a.click();
   URL.revokeObjectURL(url);
+  trackEvent('ics_downloaded', { event_count: events.length });
 });
 
 list.addEventListener('click', (e) => {
@@ -322,6 +328,7 @@ function deleteEventWithUndo(id) {
   render();
   if (editingId === id) cancelEdit();
   showToast(t('eventDeleted').replace('{name}', removed.name), t('undoDelete'));
+  trackEvent('event_deleted', { type: removed.type });
 }
 
 function showToast(message, actionLabel) {
@@ -345,6 +352,7 @@ function undoDelete() {
   saveEvents();
   render();
   hideToast();
+  trackEvent('event_delete_undone', { type: event.type });
 }
 
 function startEdit(id) {
@@ -885,6 +893,7 @@ shareBtn.addEventListener('click', async () => {
     await gcal.addAcl(calId, email, role);
     shareStatus.textContent = t('shareAdded').replace('{email}', email);
     shareEmailInput.value = '';
+    trackEvent('calendar_shared', { role });
     refreshShareList();
   } catch (err) {
     console.error(err);
@@ -906,6 +915,7 @@ shareListEl.addEventListener('click', async (e) => {
     await gcal.requestAclAccess();
     await gcal.removeAcl(calId, ruleId);
     shareStatus.textContent = t('shareRemoved').replace('{email}', email);
+    trackEvent('calendar_share_removed');
     refreshShareList();
   } catch (err) {
     console.error(err);
@@ -1035,6 +1045,7 @@ async function applyLoadedEvents(loaded) {
   saveEvents();
   render();
   syncStatus.textContent = t('eventsLoadedFromGoogle').replace('{n}', loaded.length);
+  trackEvent('google_events_loaded', { event_count: loaded.length });
 }
 
 connectBtn.addEventListener('click', () => {
@@ -1043,6 +1054,7 @@ connectBtn.addEventListener('click', () => {
     return;
   }
   try { gcal.initTokenClient(); } catch (err) { console.warn(err); }
+  trackEvent('google_connect_started', { source: 'connect_button' });
   gcal.signIn();
 });
 
@@ -1237,12 +1249,14 @@ async function syncToGoogle() {
     const plan = calculateSyncPlan(desired, desiredByUid, existingByUid);
     if (plan.changed === 0) {
       syncStatus.textContent = t('syncNoChanges').replace('{skipped}', plan.skipped);
+      trackEvent('sync_no_changes', { skipped: plan.skipped });
       refreshCalendarList();
       refreshShareList();
       return;
     }
     if (!confirm(formatSyncPlan(plan, name))) {
       syncStatus.textContent = t('syncCancelled');
+      trackEvent('sync_cancelled', plan);
       return;
     }
 
@@ -1291,6 +1305,7 @@ async function syncToGoogle() {
       .replace('{updated}', updated)
       .replace('{deleted}', deleted)
       .replace('{skipped}', skipped);
+    trackEvent('sync_completed', { created, updated, deleted, skipped, event_count: events.length });
     refreshCalendarList();
     refreshShareList();
   } finally {
@@ -1361,8 +1376,10 @@ welcomeModal.addEventListener('click', (e) => {
   const mode = btn.dataset.mode;
   welcomeModal.hidden = true;
   setMode(mode);
+  trackEvent('mode_selected', { mode });
   if (mode === 'google') {
     try { gcal.initTokenClient(); } catch (err) { console.warn(err); }
+    trackEvent('google_connect_started', { source: 'welcome_modal' });
     gcal.signIn();
   }
 });
@@ -1377,3 +1394,10 @@ if (savedMode) {
 } else {
   welcomeModal.hidden = false;
 }
+
+initAnalytics();
+trackEvent('app_open', {
+  language: getLang(),
+  mode: savedMode || 'unset',
+  event_count: events.length,
+});
