@@ -17,6 +17,20 @@ let accessToken = null;
 let tokenClient = null;
 let aclTokenClient = null;
 let onAuthChange = null;
+let pendingTokenState = null;
+
+function createOAuthState() {
+  if (!window.crypto?.getRandomValues) {
+    throw new Error('Secure random is unavailable');
+  }
+  const bytes = new Uint8Array(16);
+  window.crypto.getRandomValues(bytes);
+  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function hasExpectedState(response, expectedState) {
+  return typeof expectedState === 'string' && response?.state === expectedState;
+}
 
 export function getCalendarName() {
   return localStorage.getItem(STORAGE.CALENDAR_NAME) || 'Hebrew Dates';
@@ -83,6 +97,13 @@ export function initTokenClient() {
     scope: BASE_SCOPE,
     include_granted_scopes: true,
     callback: (response) => {
+      const expectedState = pendingTokenState;
+      pendingTokenState = null;
+      if (!hasExpectedState(response, expectedState)) {
+        accessToken = null;
+        onAuthChange?.(false, 'oauth_state_mismatch');
+        return;
+      }
       if (response.access_token) {
         accessToken = response.access_token;
         onAuthChange?.(true);
@@ -92,6 +113,7 @@ export function initTokenClient() {
       }
     },
     error_callback: (err) => {
+      pendingTokenState = null;
       accessToken = null;
       onAuthChange?.(false, err.type || 'error');
     },
@@ -107,7 +129,12 @@ export function initTokenClient() {
 export function requestAclAccess() {
   return new Promise((resolve, reject) => {
     if (!aclTokenClient) { reject(new Error('Not initialized')); return; }
+    const state = createOAuthState();
     aclTokenClient.callback = (response) => {
+      if (!hasExpectedState(response, state)) {
+        reject(new Error('OAuth state mismatch'));
+        return;
+      }
       if (response.access_token) {
         accessToken = response.access_token;
         resolve();
@@ -115,13 +142,14 @@ export function requestAclAccess() {
         reject(new Error(response.error || 'consent_denied'));
       }
     };
-    aclTokenClient.requestAccessToken();
+    aclTokenClient.requestAccessToken({ state });
   });
 }
 
 export function signIn() {
   if (!tokenClient) throw new Error('Token client not initialized');
-  tokenClient.requestAccessToken();
+  pendingTokenState = createOAuthState();
+  tokenClient.requestAccessToken({ state: pendingTokenState });
 }
 
 export function signOut() {
