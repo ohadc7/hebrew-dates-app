@@ -681,6 +681,47 @@ button:hover {
   margin-inline-end: 8px;
 }
 
+.legal-page main {
+  max-width: 820px;
+}
+
+.legal-header {
+  align-items: flex-start;
+}
+
+.legal-header h1,
+.legal-header .sub {
+  text-align: start;
+}
+
+.back-link {
+  color: #2c6cf6;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.back-link:hover {
+  text-decoration: underline;
+}
+
+.legal-card h2 {
+  margin-top: 22px;
+}
+
+.legal-card h2:first-child {
+  margin-top: 0;
+}
+
+.legal-card p {
+  margin: 0 0 12px;
+  color: #3a4256;
+}
+
+.legal-card a {
+  color: #2c6cf6;
+  font-weight: 600;
+}
+
 @media (max-width: 560px) {
   #event-list li.event-card {
     grid-template-columns: 1fr;
