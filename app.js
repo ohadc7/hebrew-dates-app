@@ -864,6 +864,7 @@ const gcalConnected = document.getElementById('gcal-connected');
 const connectBtn = document.getElementById('connect-btn');
 const disconnectBtn = document.getElementById('disconnect-btn');
 const calendarNameInput = document.getElementById('calendar-name-input');
+const newCalendarBtn = document.getElementById('new-calendar-btn');
 const syncBtn = document.getElementById('sync-btn');
 const syncStatus = document.getElementById('sync-status');
 const calendarListEl = document.getElementById('calendar-list');
@@ -874,6 +875,7 @@ const shareRoleSelect = document.getElementById('share-role');
 const shareBtn = document.getElementById('share-btn');
 const shareListEl = document.getElementById('share-list');
 const shareStatus = document.getElementById('share-status');
+let forceNewCalendarOnNextSync = false;
 
 shareBtn.addEventListener('click', async () => {
   const email = shareEmailInput.value.trim();
@@ -965,9 +967,11 @@ calendarListEl.addEventListener('click', (e) => {
   if (!li) return;
   const id = li.dataset.calId;
   const name = li.dataset.calName;
+  forceNewCalendarOnNextSync = false;
   gcal.setCalendarId(id);
   gcal.setCalendarName(name);
   calendarNameInput.value = name;
+  syncStatus.textContent = t('selectedCalendarStatus').replace('{calendar}', name);
   refreshCalendarList();
 });
 
@@ -1009,6 +1013,18 @@ async function refreshCalendarList() {
 
 calendarNameInput.value = gcal.getCalendarName();
 
+newCalendarBtn.addEventListener('click', () => {
+  const name = calendarNameInput.value.trim() || 'Hebrew Dates';
+  forceNewCalendarOnNextSync = true;
+  gcal.setCalendarId(null);
+  gcal.setCalendarName(name);
+  calendarNameInput.value = name;
+  syncStatus.textContent = t('newCalendarPending').replace('{calendar}', name);
+  refreshCalendarList();
+  refreshShareList();
+  trackEvent('new_calendar_selected');
+});
+
 gcal.setOnAuthChange(async (signedIn, err) => {
   refreshSyncUI();
   if (err && err !== 'popup_closed') {
@@ -1019,6 +1035,7 @@ gcal.setOnAuthChange(async (signedIn, err) => {
     setMode('google');
     try {
       const loaded = await loadEventsFromGoogle();
+      if (loaded === null) return;
       if (loaded.length > 0) {
         await applyLoadedEvents(loaded);
       } else {
@@ -1067,6 +1084,9 @@ calendarNameInput.addEventListener('change', () => {
   const name = calendarNameInput.value.trim() || 'Hebrew Dates';
   gcal.setCalendarName(name);
   calendarNameInput.value = name;
+  if (forceNewCalendarOnNextSync) {
+    syncStatus.textContent = t('newCalendarPending').replace('{calendar}', name);
+  }
 });
 
 syncBtn.addEventListener('click', () => {
@@ -1111,6 +1131,10 @@ async function loadEventsFromGoogle() {
   if (!calendarId) {
     const cals = await gcal.listCalendars();
     if (cals.length === 0) return [];
+    if (cals.length > 1) {
+      syncStatus.textContent = t('selectCalendarFirst');
+      return null;
+    }
     calendarId = cals[0].id;
     gcal.setCalendarId(calendarId);
     gcal.setCalendarName(cals[0].name);
@@ -1235,7 +1259,14 @@ async function syncToGoogle() {
   try {
     const name = calendarNameInput.value.trim() || 'Hebrew Dates';
     gcal.setCalendarName(name);
-    const calendarId = await gcal.ensureCalendar(name);
+    let calendarId;
+    if (forceNewCalendarOnNextSync) {
+      calendarId = await gcal.createCalendar(name);
+      forceNewCalendarOnNextSync = false;
+      trackEvent('new_calendar_created');
+    } else {
+      calendarId = await gcal.ensureCalendar(name);
+    }
 
     const desired = buildEventsForExport(events, YEARS_AHEAD);
     const desiredByUid = new Map(desired.map(e => [e.uid, e]));
@@ -1293,6 +1324,7 @@ async function syncToGoogle() {
       }
     }
 
+    // Cleanup is intentionally scoped to the active target calendar only.
     for (const [uid, ex] of existingByUid) {
       if (!desiredByUid.has(uid) && ex.status !== 'cancelled' && isOurEvent(ex)) {
         await gcal.deleteEvent(calendarId, ex.id);

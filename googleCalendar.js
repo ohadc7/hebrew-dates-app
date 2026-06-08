@@ -206,6 +206,10 @@ export async function ensureCalendar(name) {
     setCalendarId(match.id);
     return match.id;
   }
+  return createCalendar(name);
+}
+
+export async function createCalendar(name) {
   const created = await api('POST', '/calendars', {
     summary: name,
     description: APP_MARKER,

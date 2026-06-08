@@ -177,10 +177,13 @@
           <span data-i18n="connectedStatus">✓ Connected to Google.</span>
           <a href="#" id="disconnect-btn" data-i18n="disconnect">Disconnect</a>
         </p>
-        <label>
-          <span data-i18n="calendarName">Calendar name</span>
-          <input type="text" id="calendar-name-input" />
-        </label>
+        <div class="calendar-name-row">
+          <label>
+            <span data-i18n="calendarName">Calendar name</span>
+            <input type="text" id="calendar-name-input" />
+          </label>
+          <button id="new-calendar-btn" class="secondary-btn" type="button" data-i18n="newCalendarBtn">New calendar</button>
+        </div>
 
         <div class="calendars-section">
           <div class="calendars-header">
