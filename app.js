@@ -284,12 +284,22 @@ function buildPreviewLine(ev, dict, lang) {
   if (ev.type === 'bar_mitzvah') {
     const next = getNextBarMitzvahOccurrence(ev, dict);
     if (!next) return dict.noUpcoming;
-    return `${next.label}: ${formatGreg(next.date, lang)} · ${formatHebrewDateFromDate(next.date, lang, dict)} · ${formatDaysUntil(next.date, dict)}`;
+    return [
+      `${next.label}: ${formatGreg(next.date, lang)}`,
+      formatHebrewDateFromDate(next.date, lang, dict),
+      formatAgeCounter(ev.gender === 'girl' ? 12 : 13, dict),
+      formatDaysUntil(next.date, dict),
+    ].join(' · ');
   }
 
   const next = getNextOccurrence(ev);
   if (!next) return dict.noUpcoming;
-  return `${dict.nextOccurrence}: ${formatGreg(next.date, lang)} · ${formatHebrewDate(next.hd.getDate(), next.hd.getMonthName(), next.hd.getFullYear(), lang, dict)} · ${formatDaysUntil(next.date, dict)}`;
+  return [
+    `${dict.nextOccurrence}: ${formatGreg(next.date, lang)}`,
+    formatHebrewDate(next.hd.getDate(), next.hd.getMonthName(), next.hd.getFullYear(), lang, dict),
+    formatOccurrenceCounter(ev, next.counter, dict),
+    formatDaysUntil(next.date, dict),
+  ].filter(Boolean).join(' · ');
 }
 
 downloadBtn.addEventListener('click', () => {
@@ -446,6 +456,16 @@ function formatCounter(ev, dict) {
   if (n <= 0) return '';
   const word = n === 1 ? dict.yearLabel : dict.yearsLabel;
   return `${n} ${word}`;
+}
+
+function formatOccurrenceCounter(ev, counter, dict) {
+  if (!Number.isInteger(counter) || counter <= 0) return '';
+  if (ev.type === 'birthday') return formatAgeCounter(counter, dict);
+  return formatDurationUnit(counter, dict.yearUnitOne, dict.yearUnitMany);
+}
+
+function formatAgeCounter(age, dict) {
+  return dict.ageCounter.replace('{n}', age);
 }
 
 function appendBarMitzvahItem(li, ev, dict, lang) {
@@ -878,9 +898,12 @@ const shareStatus = document.getElementById('share-status');
 let forceNewCalendarOnNextSync = false;
 
 shareBtn.addEventListener('click', async () => {
-  const email = shareEmailInput.value.trim();
-  if (!email || !email.includes('@')) {
+  const { valid, invalid } = parseShareEmails(shareEmailInput.value);
+  if (valid.length === 0) {
     alert(t('alertInvalidEmail'));
+    if (invalid.length > 0) {
+      shareStatus.textContent = formatShareOutcome([], invalid.map(email => ({ email, message: t('invalidEmailReason') })));
+    }
     return;
   }
   const role = shareRoleSelect.value;
@@ -890,20 +913,67 @@ shareBtn.addEventListener('click', async () => {
     return;
   }
   shareBtn.disabled = true;
+  const successes = [];
+  const failures = invalid.map(email => ({ email, message: t('invalidEmailReason') }));
   try {
     await gcal.requestAclAccess();
-    await gcal.addAcl(calId, email, role);
-    shareStatus.textContent = t('shareAdded').replace('{email}', email);
-    shareEmailInput.value = '';
-    trackEvent('calendar_shared', { role });
-    refreshShareList();
+    for (const email of valid) {
+      try {
+        await gcal.addAcl(calId, email, role);
+        successes.push(email);
+      } catch (err) {
+        console.error('Share failed for', email, err);
+        failures.push({ email, message: shortErrorMessage(err) });
+      }
+    }
+    shareStatus.textContent = formatShareOutcome(successes, failures);
+    shareEmailInput.value = failures.map(item => item.email).join(', ');
+    trackEvent('calendar_shared', { role, shared_count: successes.length, failed_count: failures.length });
+    if (successes.length > 0) refreshShareList();
   } catch (err) {
     console.error(err);
-    shareStatus.textContent = t('shareError').replace('{msg}', err.message || String(err));
+    shareStatus.textContent = t('shareError').replace('{msg}', shortErrorMessage(err));
   } finally {
     shareBtn.disabled = false;
   }
 });
+
+function parseShareEmails(raw) {
+  const parts = raw
+    .split(/[\s,;]+/)
+    .map(email => email.trim())
+    .filter(Boolean);
+  const seen = new Set();
+  const valid = [];
+  const invalid = [];
+
+  for (const email of parts) {
+    const key = email.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (/^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$/.test(email)) valid.push(email);
+    else invalid.push(email);
+  }
+
+  return { valid, invalid };
+}
+
+function formatShareOutcome(successes, failures) {
+  const dict = translations[getLang()];
+  const sent = successes.join(', ');
+  const failed = failures.map(item => `${item.email} (${item.message})`).join(', ');
+  if (successes.length > 0 && failures.length > 0) {
+    return dict.shareResultPartial.replace('{sent}', sent).replace('{failed}', failed);
+  }
+  if (successes.length > 0) {
+    return dict.shareResultAll.replace('{emails}', sent);
+  }
+  return dict.shareResultFailed.replace('{failed}', failed);
+}
+
+function shortErrorMessage(err) {
+  return (err?.message || String(err)).replace(/\s+/g, ' ').slice(0, 120);
+}
 
 shareListEl.addEventListener('click', async (e) => {
   const removeBtn = e.target.closest('.remove-share-btn');
